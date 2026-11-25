@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local runtime state & caches (never commit)
+.localgpu_os/
+*.lock
+*.tmp
+logs/
+tmp/
+
+# Secrets & OS artifacts
+.env
+.env.local
+.DS_Store
+Thumbs.db
