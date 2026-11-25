@@ -48,12 +48,32 @@ flowchart TD
     Core --> W3["M3: NVENC Media & Offline Speech Worker<br/>(Decoupled GPU_ENCODE Resource Class)"]
 ```
 
-- **M0 (Current)**: Specification & governance baseline ([PRD.md](PRD.md) `v1.1.0`, [GLOSSARY.md](GLOSSARY.md), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
-- **M1-A**: Hardware Foundation (`HardwareProfile`, dynamic policy engine, `lgpu doctor`).
-- **M1-B**: Resource Arbitration (3-layer `VRAM-Gate`, zombie recovery, `ThermalGuard`, `lgpu status`).
+- **M0 (Frozen — `m0-prd-v1.1.2-frozen`)**: Specification & governance baseline ([PRD.md](PRD.md) `v1.1.2`, [GLOSSARY.md](GLOSSARY.md), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
+- **M1-A (✅ Completed & Verified — `m1-a-hardware-foundation-v1.0.0`)**: Hardware Foundation (`HardwareProfile` / `HardwareSnapshot`, `PolicyEngine`, `lgpu doctor`, 12/12 zero-dependency tests passing, verified on Windows 11 + NVIDIA RTX 4060 Laptop).
+- **M1-B (Next)**: Resource Arbitration (3-layer `VRAM-Gate`, `RegistryLock`, zombie recovery, 4-state `ThermalGuard`, `lgpu status`).
 - **M1-C**: Worker Runtime (`Worker Manifest v1.0`, lifecycle & graceful cancellation, `lgpu run` + Python SDK).
 - **M1-D**: First production worker — Layered Offline OCR / PDF Worker (`PyMuPDF` + `RapidOCR` default, `Docling` optional).
 - **M2 – M4**: Local LLM & Embedding Worker + secured localhost HTTP API (M2), NVENC Media & Speech Worker (M3), MCP Server & multi-language documentation (M4).
+
+---
+
+## 🚀 Quick Start (M1-A)
+
+> **Verified Platform**: Windows 11 + NVIDIA CUDA (single GPU, RTX 20/30/40/50 series); Linux as secondary verification target; gracefully degrades to `CPU_INT8` when no NVIDIA GPU is present. Zero heavy runtime dependencies (Python 3.10+ stdlib only).
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/etrnya/LocalGPU-OS.git
+cd LocalGPU-OS
+
+# 2. Run hardware doctor and dynamic policy check
+# Windows PowerShell:
+$env:PYTHONPATH="src"; python -m localgpu_os.presentation.cli doctor
+$env:PYTHONPATH="src"; python -m localgpu_os.presentation.cli doctor --json
+
+# 3. Run offline unit & boundary scenario tests (12/12)
+$env:PYTHONPATH="src"; python -m unittest discover -s tests -v
+```
 
 ---
 
