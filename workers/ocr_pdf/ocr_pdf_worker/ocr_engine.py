@@ -17,6 +17,11 @@ import rapidocr_onnxruntime
 from rapidocr_onnxruntime import RapidOCR
 
 from ocr_pdf_worker.native_extractor import ExtractionCancelledError
+from ocr_pdf_worker.triage import (
+    PageTriageResult,
+    TriageConfig,
+    evaluate_ocr_page_triage,
+)
 
 
 @dataclass(frozen=True)
@@ -42,6 +47,7 @@ class OcrPageResult:
     char_count: int
     blocks: tuple[OcrTextBlock, ...]
     processing_time_ms: float
+    quality_triage: PageTriageResult
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -53,6 +59,7 @@ class OcrPageResult:
             "block_count": len(self.blocks),
             "processing_time_ms": round(self.processing_time_ms, 2),
             "blocks": [b.to_dict() for b in self.blocks],
+            "quality_triage": self.quality_triage.to_dict(),
         }
 
 
@@ -279,22 +286,44 @@ class RapidOcrEngine:
     def backend_audit(self) -> OcrBackendAudit:
         return self._audit
 
-    def _run_on_rgb_array(self, rgb_array: np.ndarray, page_number: int) -> OcrPageResult:
+    def _run_on_rgb_array(
+        self,
+        rgb_array: np.ndarray,
+        page_number: int,
+        triage_config: TriageConfig | None = None,
+    ) -> OcrPageResult:
         t0 = time.monotonic()
         raw_result, _ = self._ocr(rgb_array)
         elapsed_ms = (time.monotonic() - t0) * 1000.0
 
+        if raw_result is not None and not isinstance(raw_result, (list, tuple)):
+            raise RuntimeError(
+                f"Invalid RapidOCR result format on page {page_number}: {type(raw_result).__name__}."
+            )
+
         blocks: list[OcrTextBlock] = []
+        raw_triage_pairs: list[tuple[str, Any]] = []
         lines: list[str] = []
         if raw_result:
             for item in raw_result:
-                raw_box, raw_text, raw_score = item[0], str(item[1]), float(item[2])
+                if not isinstance(item, (list, tuple)) or len(item) < 3:
+                    raise RuntimeError(
+                        f"Malformed RapidOCR block entry on page {page_number}: {item!r}."
+                    )
+                raw_box, raw_text, raw_score = item[0], str(item[1]), item[2]
+                raw_triage_pairs.append((raw_text, raw_score))
                 bbox = tuple((float(pt[0]), float(pt[1])) for pt in raw_box)
-                blocks.append(OcrTextBlock(text=raw_text, confidence=raw_score, bbox=bbox))
+                score_float = float(raw_score) if isinstance(raw_score, (int, float)) and not isinstance(raw_score, bool) else float("nan")
+                blocks.append(OcrTextBlock(text=raw_text, confidence=score_float, bbox=bbox))
                 if raw_text.strip():
                     lines.append(raw_text.strip())
 
         full_text = "\n".join(lines)
+        triage = evaluate_ocr_page_triage(
+            blocks=raw_triage_pairs,
+            char_count=len(full_text),
+            config=triage_config,
+        )
         h, w = int(rgb_array.shape[0]), int(rgb_array.shape[1])
         return OcrPageResult(
             page_number=page_number,
@@ -304,12 +333,14 @@ class RapidOcrEngine:
             char_count=len(full_text),
             blocks=tuple(blocks),
             processing_time_ms=elapsed_ms,
+            quality_triage=triage,
         )
 
     def extract_image(
         self,
         image_path: Path,
         cancel_check: Callable[[], bool] | None = None,
+        triage_config: TriageConfig | None = None,
     ) -> OcrExtraction:
         if cancel_check is not None and cancel_check():
             raise ExtractionCancelledError("Cancelled before image OCR.")
@@ -318,7 +349,7 @@ class RapidOcrEngine:
         with Image.open(path) as img:
             rgb = np.asarray(img.convert("RGB"))
 
-        page = self._run_on_rgb_array(rgb, page_number=1)
+        page = self._run_on_rgb_array(rgb, page_number=1, triage_config=triage_config)
         return OcrExtraction(
             source_path=path,
             source_kind="IMAGE",
@@ -334,6 +365,7 @@ class RapidOcrEngine:
         pdf_path: Path,
         dpi: int = 200,
         cancel_check: Callable[[], bool] | None = None,
+        triage_config: TriageConfig | None = None,
     ) -> OcrExtraction:
         path = Path(pdf_path)
         pages: list[OcrPageResult] = []
@@ -350,7 +382,7 @@ class RapidOcrEngine:
                 rgb = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
                     pix.height, pix.width, 3
                 )
-                page_res = self._run_on_rgb_array(rgb, page_number=idx)
+                page_res = self._run_on_rgb_array(rgb, page_number=idx, triage_config=triage_config)
                 pages.append(page_res)
                 total_chars += page_res.char_count
 

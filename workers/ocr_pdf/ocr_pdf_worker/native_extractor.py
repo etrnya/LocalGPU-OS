@@ -8,6 +8,12 @@ from typing import Any, Callable
 
 import pymupdf as fitz  # PyMuPDF
 
+from ocr_pdf_worker.triage import (
+    PageTriageResult,
+    TriageConfig,
+    evaluate_native_page_triage,
+)
+
 
 class ExtractionCancelledError(Exception):
     """Raised internally when the cooperative cancel signal is observed mid-document."""
@@ -20,6 +26,7 @@ class ExtractedPage:
     char_count: int
     width_pt: float
     height_pt: float
+    quality_triage: PageTriageResult
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -28,6 +35,7 @@ class ExtractedPage:
             "char_count": self.char_count,
             "width_pt": round(self.width_pt, 2),
             "height_pt": round(self.height_pt, 2),
+            "quality_triage": self.quality_triage.to_dict(),
         }
 
 
@@ -63,8 +71,9 @@ class NativePdfExtraction:
 def extract_native_pdf(
     source_path: Path,
     cancel_check: Callable[[], bool] | None = None,
+    triage_config: TriageConfig | None = None,
 ) -> NativePdfExtraction:
-    """Extract native text page-by-page with 1-based page numbers and cooperative cancellation."""
+    """Extract native text page-by-page with 1-based page numbers and M2-A quality triage."""
     path = Path(source_path)
     pages: list[ExtractedPage] = []
     total_chars = 0
@@ -86,6 +95,27 @@ def extract_native_pdf(
             rect = page.rect
             char_count = len(cleaned)
             total_chars += char_count
+
+            image_rects: list[tuple[float, float, float, float]] = []
+            for img_info in page.get_image_info(xrefs=True) or ():
+                bbox = img_info.get("bbox")
+                if bbox is not None and len(bbox) == 4:
+                    image_rects.append((float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])))
+
+            try:
+                vector_count = len(page.get_drawings() or ())
+            except Exception:
+                vector_count = 0
+
+            triage = evaluate_native_page_triage(
+                char_count=char_count,
+                image_rects=image_rects,
+                page_width=float(rect.width),
+                page_height=float(rect.height),
+                vector_drawing_count=vector_count,
+                config=triage_config,
+            )
+
             pages.append(
                 ExtractedPage(
                     page_number=idx,
@@ -93,6 +123,7 @@ def extract_native_pdf(
                     char_count=char_count,
                     width_pt=float(rect.width),
                     height_pt=float(rect.height),
+                    quality_triage=triage,
                 )
             )
 
