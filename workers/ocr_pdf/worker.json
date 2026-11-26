@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "worker_id": "ocr_pdf",
+  "name": "LocalGPU-OS Layered Offline OCR & PDF Worker",
+  "version": "1.0.0",
+  "entrypoint": {
+    "module": "ocr_pdf_worker",
+    "args": []
+  },
+  "resources": [
+    {
+      "resource_class": "GPU_COMPUTE",
+      "amount": 1,
+      "unit": "slot",
+      "exclusive": true
+    },
+    {
+      "resource_class": "GPU_MEMORY",
+      "amount": 2048,
+      "unit": "MiB",
+      "exclusive": false
+    }
+  ],
+  "fallback_policy": {
+    "cpu_supported": true,
+    "cpu_backend": "cpu_int8",
+    "max_cpu_threads": 2,
+    "max_system_memory_mib": 1024
+  },
+  "network_policy": "RUNTIME_OFFLINE",
+  "cancel_grace_seconds": 5.0,
+  "timeout_seconds": 300.0,
+  "poll_interval_seconds": 0.25,
+  "concurrency_limit": 1,
+  "file_limits": {
+    "max_file_size_bytes": 104857600,
+    "min_free_disk_mib": 256,
+    "allow_base64_payload": false
+  }
+}

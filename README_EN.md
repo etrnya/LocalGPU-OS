@@ -49,33 +49,38 @@ flowchart TD
 ```
 
 - **M0 (Frozen — `m0-prd-v1.1.2-frozen`)**: Specification & governance baseline ([PRD.md](PRD.md) `v1.1.2`, [GLOSSARY.md](GLOSSARY.md), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
-- **M1-A (✅ Completed & Verified — `m1-a-hardware-foundation-v1.0.0`)**: Hardware Foundation (`HardwareProfile` / `HardwareSnapshot`, `PolicyEngine`, `lgpu doctor`, 12/12 zero-dependency tests passing, verified on Windows 11 + NVIDIA RTX 4060 Laptop).
-- **M1-B (✅ Completed & Verified — `m1-b-resource-arbitration-v1.0.0`)**: Resource Arbitration (cross-platform `RegistryLock`, atomic `FileLeaseStore`, observation-confirmed `VRAM_pending` transitions, fencing tokens, `LEASE_RECLAIM_BLOCKED` guard, all-or-nothing `VramGate`, 4-state hysteresis `ThermalGuard`, `OllamaEvictionProvider`, `lgpu status`, 25/25 tests passing & verified on RTX 4060 Laptop).
-- **M1-C (Next)**: Worker Runtime (`Worker Manifest v1.0`, lifecycle & graceful cancellation, `lgpu run` + Python SDK).
-- **M1-D**: First production worker — Layered Offline OCR / PDF Worker (`PyMuPDF` + `RapidOCR` default, `Docling` optional).
-- **M2 – M4**: Local LLM & Embedding Worker + secured localhost HTTP API (M2), NVENC Media & Speech Worker (M3), MCP Server & multi-language documentation (M4).
+- **M1-A (✅ Completed & Verified — `m1-a-hardware-foundation-v1.0.0`)**: Hardware Foundation (`HardwareProfile` / `HardwareSnapshot`, `PolicyEngine`, `lgpu doctor`, 12 tests).
+- **M1-B (✅ Completed & Verified — `m1-b-resource-arbitration-v1.0.0`)**: Resource Arbitration (`RegistryLock`, atomic `FileLeaseStore`, observation-confirmed `VRAM_pending`, fencing tokens, `LEASE_RECLAIM_BLOCKED`, all-or-nothing `VramGate`, 4-state `ThermalGuard`, `OllamaEvictionProvider`, `lgpu status`, 13 tests).
+- **M1-C (✅ Completed & Verified — `m1-c-worker-runtime-v1.0.0`)**: Worker Runtime (`WorkerRegistry`, `Worker Manifest Contract v1.0`, strict isolated `.venv` resolution, `json_file_manifest` Base64/path-traversal/symlink guards, `DISK_SPACE_INSUFFICIENT`, 7-step cross-platform cancellation with Step 7 Fail-Closed VRAM re-probe, `lgpu run` + Python SDK, 15 tests).
+- **M1-D (✅ Completed & Verified — `m1-d-ocr-pdf-v1.0.0`)**: First production isolated worker — [workers/ocr_pdf](workers/ocr_pdf/README.md) (D1 native-text PyMuPDF → D2 offline RapidOCR CUDA/CPU with pre-load SHA-256 verification → D3 VRAM/OOM, thermal, multi-page cancel, forced-kill output preservation & mixed-batch stress tests → D4 end-to-end integration & 5-round stability, 16 tests; **56 / 56** total tests passing on Windows 11 + RTX 4060 Laptop).
+- **M2 – M4 (Planned)**: Local LLM & Embedding Worker + secured localhost HTTP API (M2), NVENC Media & Speech Worker (M3), MCP Server & multi-language docs (M4).
 
 ---
 
-## 🚀 Quick Start (M1-A & M1-B)
+## 🚀 Quick Start (M1 Complete)
 
-> **Verified Platform**: Windows 11 + NVIDIA CUDA (single GPU, RTX 20/30/40/50 series); Linux as secondary verification target; gracefully degrades to `CPU_INT8` when no NVIDIA GPU is present. Zero heavy runtime dependencies (Python 3.10+ stdlib only).
+> **Verified Platform**: Windows 11 + NVIDIA CUDA (single GPU, verified on RTX 4060 Laptop 8GB); Linux as secondary target; gracefully degrades to `CPU_INT8` when GPU is unavailable or VRAM is insufficient. Zero heavy runtime dependencies in Core OS (Python 3.10+ stdlib only).
 
-```bash
+```powershell
 # 1. Clone the repository
 git clone https://github.com/etrnya/LocalGPU-OS.git
 cd LocalGPU-OS
 
 # 2. Run hardware doctor and dynamic policy check (M1-A)
-# Windows PowerShell:
-$env:PYTHONPATH="src"; python -m localgpu_os.presentation.cli doctor
 $env:PYTHONPATH="src"; python -m localgpu_os.presentation.cli doctor --json
 
 # 3. Inspect live VRAM-Gate arbitration state and active leases (M1-B)
-$env:PYTHONPATH="src"; python -m localgpu_os.presentation.cli status
 $env:PYTHONPATH="src"; python -m localgpu_os.presentation.cli status --json
 
-# 4. Run full offline & cross-process test suite (25/25)
+# 4. Run the isolated offline OCR / PDF worker (M1-C + M1-D; see workers/ocr_pdf/README.md for setup)
+$env:PYTHONPATH="src"; python -m localgpu_os.presentation.cli run ocr_pdf `
+  --input-manifest .\inputs\manifest.json `
+  --allowed-root .\inputs `
+  --allow-cpu-fallback `
+  --json `
+  -- --output-dir .\output --job-id job_001
+
+# 5. Run the full test suite (M1-A through M1-D, 56 tests)
 $env:PYTHONPATH="src"; python -m unittest discover -s tests -v
 ```
 
