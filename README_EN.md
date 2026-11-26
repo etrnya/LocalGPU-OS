@@ -50,14 +50,14 @@ flowchart TD
 
 - **M0 (Frozen — `m0-prd-v1.1.2-frozen`)**: Specification & governance baseline ([PRD.md](PRD.md) `v1.1.2`, [GLOSSARY.md](GLOSSARY.md), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
 - **M1-A (✅ Completed & Verified — `m1-a-hardware-foundation-v1.0.0`)**: Hardware Foundation (`HardwareProfile` / `HardwareSnapshot`, `PolicyEngine`, `lgpu doctor`, 12/12 zero-dependency tests passing, verified on Windows 11 + NVIDIA RTX 4060 Laptop).
-- **M1-B (Next)**: Resource Arbitration (3-layer `VRAM-Gate`, `RegistryLock`, zombie recovery, 4-state `ThermalGuard`, `lgpu status`).
-- **M1-C**: Worker Runtime (`Worker Manifest v1.0`, lifecycle & graceful cancellation, `lgpu run` + Python SDK).
+- **M1-B (✅ Completed & Verified — `m1-b-resource-arbitration-v1.0.0`)**: Resource Arbitration (cross-platform `RegistryLock`, atomic `FileLeaseStore`, observation-confirmed `VRAM_pending` transitions, fencing tokens, `LEASE_RECLAIM_BLOCKED` guard, all-or-nothing `VramGate`, 4-state hysteresis `ThermalGuard`, `OllamaEvictionProvider`, `lgpu status`, 25/25 tests passing & verified on RTX 4060 Laptop).
+- **M1-C (Next)**: Worker Runtime (`Worker Manifest v1.0`, lifecycle & graceful cancellation, `lgpu run` + Python SDK).
 - **M1-D**: First production worker — Layered Offline OCR / PDF Worker (`PyMuPDF` + `RapidOCR` default, `Docling` optional).
 - **M2 – M4**: Local LLM & Embedding Worker + secured localhost HTTP API (M2), NVENC Media & Speech Worker (M3), MCP Server & multi-language documentation (M4).
 
 ---
 
-## 🚀 Quick Start (M1-A)
+## 🚀 Quick Start (M1-A & M1-B)
 
 > **Verified Platform**: Windows 11 + NVIDIA CUDA (single GPU, RTX 20/30/40/50 series); Linux as secondary verification target; gracefully degrades to `CPU_INT8` when no NVIDIA GPU is present. Zero heavy runtime dependencies (Python 3.10+ stdlib only).
 
@@ -66,12 +66,16 @@ flowchart TD
 git clone https://github.com/etrnya/LocalGPU-OS.git
 cd LocalGPU-OS
 
-# 2. Run hardware doctor and dynamic policy check
+# 2. Run hardware doctor and dynamic policy check (M1-A)
 # Windows PowerShell:
 $env:PYTHONPATH="src"; python -m localgpu_os.presentation.cli doctor
 $env:PYTHONPATH="src"; python -m localgpu_os.presentation.cli doctor --json
 
-# 3. Run offline unit & boundary scenario tests (12/12)
+# 3. Inspect live VRAM-Gate arbitration state and active leases (M1-B)
+$env:PYTHONPATH="src"; python -m localgpu_os.presentation.cli status
+$env:PYTHONPATH="src"; python -m localgpu_os.presentation.cli status --json
+
+# 4. Run full offline & cross-process test suite (25/25)
 $env:PYTHONPATH="src"; python -m unittest discover -s tests -v
 ```
 

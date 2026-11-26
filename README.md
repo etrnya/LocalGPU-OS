@@ -50,14 +50,14 @@ flowchart TD
 
 - **M0（已凍結 — `m0-prd-v1.1.2-frozen`）**：規格定案與治理基線（[PRD.md](PRD.md) `v1.1.2`、[GLOSSARY.md](GLOSSARY.md)、[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)）。
 - **M1-A（✅ 已完成並實機驗收 — `m1-a-hardware-foundation-v1.0.0`）**：Hardware Foundation（`HardwareProfile` / `HardwareSnapshot`、`PolicyEngine`、`lgpu doctor`、12/12 零依賴測試通過，已於 Windows 11 + NVIDIA RTX 4060 Laptop 實機驗收）。
-- **M1-B（下一步）**：Resource Arbitration（三層 `VRAM-Gate`、`RegistryLock`、租約恢復、溫控四態、`lgpu status`）。
-- **M1-C**：Worker Runtime（`Worker Manifest v1.0`、生命週期管理、優雅取消、`lgpu run` ＋ Python SDK）。
+- **M1-B（✅ 已完成並實機驗收 — `m1-b-resource-arbitration-v1.0.0`）**：Resource Arbitration（跨平台 `RegistryLock`、原子 `FileLeaseStore`、`VRAM_pending` 觀測確認轉換、Fencing Token、防誤回收 `LEASE_RECLAIM_BLOCKED`、全有或全無多資源 `VramGate`、四態遲滯 `ThermalGuard`、`OllamaEvictionProvider`、`lgpu status`，累計 25/25 零依賴測試通過並於 RTX 4060 Laptop 實機驗收）。
+- **M1-C（下一步）**：Worker Runtime（`Worker Manifest v1.0`、生命週期管理、優雅取消、`lgpu run` ＋ Python SDK）。
 - **M1-D**：第一個實戰應用 — 分層式離線 OCR / PDF Worker（預設 `PyMuPDF` + `RapidOCR`，選配 `Docling`）。
 - **M2 ~ M4**：離線 LLM & Embedding Worker、本機安全 HTTP API（M2）、NVENC 影音與語音 Worker（M3）、MCP Server 與多語系文件發布（M4）。
 
 ---
 
-## 🚀 快速開始 (Quick Start — M1-A)
+## 🚀 快速開始 (Quick Start — M1-A & M1-B)
 
 > **目前正式驗證平台**：Windows 11 + NVIDIA CUDA（單卡，RTX 20/30/40/50 系列）；Linux 為次驗證平台；無 NVIDIA 顯卡時自動降級至 `CPU_INT8`。核心底座無重型第三方依賴（Python 3.10+ 即可執行）。
 
@@ -66,12 +66,16 @@ flowchart TD
 git clone https://github.com/etrnya/LocalGPU-OS.git
 cd LocalGPU-OS
 
-# 2. 執行硬體健檢與動態策略判定（免安裝重型依賴）
+# 2. 執行硬體健檢與動態策略判定（M1-A）
 # Windows PowerShell:
 $env:PYTHONPATH="src"; python -m localgpu_os.presentation.cli doctor
 $env:PYTHONPATH="src"; python -m localgpu_os.presentation.cli doctor --json
 
-# 3. 執行離線單元與邊界情境測試（12/12）
+# 3. 檢視即時 VRAM-Gate 資源仲裁與活躍租約狀態（M1-B）
+$env:PYTHONPATH="src"; python -m localgpu_os.presentation.cli status
+$env:PYTHONPATH="src"; python -m localgpu_os.presentation.cli status --json
+
+# 4. 執行全量離線與跨程序測試（25/25）
 $env:PYTHONPATH="src"; python -m unittest discover -s tests -v
 ```
 
