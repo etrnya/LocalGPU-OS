@@ -120,6 +120,14 @@ class VramGate:
     def store(self) -> FileLeaseStore:
         return self._store
 
+    @property
+    def process_inspector(self) -> ProcessInspectorProtocol:
+        return self._inspector
+
+    def reprobe_hardware(self, device_index: int = 0) -> tuple[HardwareProfile, HardwareSnapshot]:
+        """Re-probe live GPU hardware state (used after forced kill in 7-step cancel Step 7)."""
+        return self._detector.probe(device_index=device_index)
+
     def _new_lock(self) -> RegistryLock:
         return RegistryLock(self._lock_path, timeout_seconds=self._lock_timeout)
 
@@ -547,6 +555,46 @@ class VramGate:
             now_mono = self._clock.monotonic()
             updated = replace(
                 target,
+                heartbeat_at=now_utc,
+                heartbeat_monotonic=now_mono,
+            )
+            new_leases = tuple(
+                updated if l.lease_id == lease_id else l for l in state.active_leases()
+            )
+            self._store.save(
+                LeaseRegistryState(
+                    schema_version=state.schema_version,
+                    generation=state.generation,
+                    updated_at=now_utc,
+                    leases=new_leases,
+                )
+            )
+            return updated
+
+    def attach_process(
+        self,
+        lease_id: str,
+        lease_generation: int,
+        pid: int,
+        pid_create_time: float | None = None,
+        transition_to_starting: bool = True,
+    ) -> VramLease:
+        """Bind spawned worker PID & pid_create_time to an active lease under RegistryLock."""
+        with self._new_lock():
+            state = self._store.load()
+            target = self._find_and_verify_lease(state, lease_id, lease_generation)
+            now_utc = self._clock.utc_now_iso()
+            now_mono = self._clock.monotonic()
+            next_state = (
+                ReservationState.STARTING
+                if transition_to_starting and target.reservation_state == ReservationState.RESERVED
+                else target.reservation_state
+            )
+            updated = replace(
+                target,
+                pid=pid,
+                pid_create_time=pid_create_time,
+                reservation_state=next_state,
                 heartbeat_at=now_utc,
                 heartbeat_monotonic=now_mono,
             )

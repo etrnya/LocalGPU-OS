@@ -11,6 +11,8 @@ from typing import Sequence
 from localgpu_os.application.doctor_service import DoctorService
 from localgpu_os.application.status_service import StatusReport, StatusService
 from localgpu_os.domain.hardware import DoctorReport
+from localgpu_os.domain.worker import WorkerRunResult
+from localgpu_os.sdk import LocalGpuClient
 
 
 def _configure_stdio() -> None:
@@ -81,6 +83,30 @@ def format_status_human(report: StatusReport) -> str:
     return "\n".join(lines)
 
 
+def format_run_human(result: WorkerRunResult) -> str:
+    lines = [
+        f"LocalGPU-OS Worker Run (schema v{result.schema_version})",
+        "=" * 52,
+        f"Run ID          : {result.run_id}",
+        f"Worker ID       : {result.worker_id}",
+        f"Status          : {result.status}",
+        f"Exit Code       : {result.exit_code if result.exit_code is not None else 'N/A'}",
+        f"Lease           : {result.lease_id or 'NONE'} (gen={result.lease_generation if result.lease_generation is not None else 'N/A'})",
+        f"Network Policy  : {result.network_policy.value}",
+        f"CPU Fallback    : {result.used_cpu_fallback}",
+        f"Forced Kill     : {result.forced_kill} (VRAM reprobed: {result.post_kill_vram_reprobed})",
+    ]
+    if result.error_codes:
+        lines.append(f"Error Codes     : {', '.join(e.value for e in result.error_codes)}")
+    if result.warnings:
+        lines.append("Warnings:")
+        for w in result.warnings:
+            lines.append(f"  - {w}")
+    if result.output_data is not None:
+        lines.append(f"Output Data     : {json.dumps(result.output_data, ensure_ascii=False)}")
+    return "\n".join(lines)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="lgpu",
@@ -101,13 +127,71 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override state directory containing registry.lock and leases.json",
     )
+
+    run_p = sub.add_parser("run", help="Run an isolated worker under VRAM-Gate arbitration")
+    run_p.add_argument("worker_id", help="Registered worker ID under workers/<worker_id>")
+    run_p.add_argument("--json", action="store_true", dest="as_json", help="Emit JSON run result")
+    run_p.add_argument("--device", type=int, default=0, help="Target NVIDIA GPU index (default: 0)")
+    run_p.add_argument(
+        "--workers-dir",
+        type=Path,
+        default=None,
+        help="Override workers root directory (default: ./workers)",
+    )
+    run_p.add_argument(
+        "--state-dir",
+        type=Path,
+        default=None,
+        help="Override state directory containing registry.lock and leases.json",
+    )
+    run_p.add_argument(
+        "--work-dir",
+        type=Path,
+        default=None,
+        help="Override per-run working directory",
+    )
+    run_p.add_argument(
+        "--input-manifest",
+        type=Path,
+        default=None,
+        help="Path to json_file_manifest input file",
+    )
+    run_p.add_argument(
+        "--allowed-root",
+        type=Path,
+        default=None,
+        help="Allowed root directory for json_file_manifest path traversal protection",
+    )
+    run_p.add_argument(
+        "--allow-eviction",
+        action="store_true",
+        help="Allow external service eviction if VRAM is insufficient",
+    )
+    run_p.add_argument(
+        "--allow-cpu-fallback",
+        action="store_true",
+        help="Allow automatic fallback to CPU_COMPUTE when GPU admission is denied",
+    )
+    run_p.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="Override manifest execution timeout in seconds",
+    )
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     _configure_stdio()
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    forwarded_worker_args: list[str] = []
+    if "--" in raw_argv:
+        sep_idx = raw_argv.index("--")
+        forwarded_worker_args = raw_argv[sep_idx + 1 :]
+        raw_argv = raw_argv[:sep_idx]
+
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(raw_argv)
 
     if args.command == "doctor":
         report = DoctorService().run_doctor(device_index=args.device)
@@ -126,6 +210,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             print(format_status_human(status_report))
         return 0
+
+    if args.command == "run":
+        client = LocalGpuClient(
+            workers_dir=args.workers_dir,
+            state_dir=args.state_dir,
+        )
+        result = client.run_worker(
+            worker_id=args.worker_id,
+            extra_args=forwarded_worker_args,
+            input_manifest=args.input_manifest,
+            allowed_root=args.allowed_root,
+            work_dir=args.work_dir,
+            device_index=args.device,
+            allow_eviction=args.allow_eviction,
+            allow_cpu_fallback=args.allow_cpu_fallback,
+            timeout_seconds=args.timeout,
+        )
+        if args.as_json:
+            print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
+        else:
+            print(format_run_human(result))
+        return 0 if result.succeeded else 1
 
     return 2
 

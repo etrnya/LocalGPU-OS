@@ -39,6 +39,8 @@ class ProcessInspectorProtocol(Protocol):
 
     def current_process_create_time(self) -> float | None: ...
 
+    def get_process_create_time(self, pid: int) -> float | None: ...
+
 
 class OsProcessInspector:
     """Zero-dependency cross-platform process inspector."""
@@ -51,8 +53,13 @@ class OsProcessInspector:
         return self._is_alive_posix(pid)
 
     def current_process_create_time(self) -> float | None:
+        return self.get_process_create_time(os.getpid())
+
+    def get_process_create_time(self, pid: int) -> float | None:
+        if pid <= 0:
+            return None
         if os.name == "nt":
-            return self._get_create_time_windows(os.getpid())
+            return self._get_create_time_windows(pid)
         return None
 
     def _is_alive_windows(
