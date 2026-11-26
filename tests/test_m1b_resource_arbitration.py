@@ -623,6 +623,28 @@ class TestM1BResourceArbitration(unittest.TestCase):
         self.assertTrue(called_urls[0].endswith("/api/ps"))
         self.assertTrue(called_urls[1].endswith("/api/generate"))
 
+    # T14: OllamaEvictionProvider SSRF guard (loopback http:// only)
+    def test_t14_ollama_eviction_provider_blocks_non_loopback_urls(self) -> None:
+        # Allowed loopback URLs
+        for ok_url in (
+            "http://127.0.0.1:11434",
+            "http://localhost:11434",
+            "http://[::1]:11434",
+        ):
+            p = OllamaEvictionProvider(base_url=ok_url)
+            self.assertEqual(p.name, "ollama")
+
+        # Forbidden remote, metadata, scheme, or credential-injection URLs
+        for bad_url in (
+            "https://127.0.0.1:11434",
+            "http://169.254.169.254/latest/meta-data",
+            "http://evil.example.com:11434",
+            "file:///etc/passwd",
+            "http://127.0.0.1@evil.example.com:11434",
+        ):
+            with self.assertRaises(ValueError):
+                OllamaEvictionProvider(base_url=bad_url)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -6,9 +6,12 @@ from dataclasses import dataclass
 import json
 from typing import Protocol
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from localgpu_os.domain.enums import ErrorCode
+
+_ALLOWED_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,18 @@ class OllamaEvictionProvider:
     """
 
     def __init__(self, base_url: str = "http://127.0.0.1:11434") -> None:
+        parsed = urllib.parse.urlparse(base_url)
+        host = (parsed.hostname or "").lower()
+        if (
+            parsed.scheme != "http"
+            or host not in _ALLOWED_LOOPBACK_HOSTS
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            raise ValueError(
+                "OllamaEvictionProvider only permits loopback http:// URLs "
+                f"(127.0.0.1, localhost, [::1]), got {base_url!r}."
+            )
         self._base_url = base_url.rstrip("/")
 
     @property
