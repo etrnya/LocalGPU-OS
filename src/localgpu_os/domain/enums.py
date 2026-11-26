@@ -31,6 +31,28 @@ class ThermalState(str, Enum):
     SENSOR_DEGRADED = "SENSOR_DEGRADED"
 
 
+class ResourceClass(str, Enum):
+    GPU_COMPUTE = "GPU_COMPUTE"
+    GPU_MEMORY = "GPU_MEMORY"
+    CPU_COMPUTE = "CPU_COMPUTE"
+    GPU_ENCODE = "GPU_ENCODE"
+    SYSTEM_MEMORY = "SYSTEM_MEMORY"
+
+
+class ReservationState(str, Enum):
+    RESERVED = "RESERVED"
+    STARTING = "STARTING"
+    ACTIVE = "ACTIVE"
+    RELEASING = "RELEASING"
+    RELEASED = "RELEASED"
+
+
+class NetworkPolicy(str, Enum):
+    INSTALL_PHASE = "INSTALL_PHASE"
+    RUNTIME_OFFLINE = "RUNTIME_OFFLINE"
+    AIRGAPPED = "AIRGAPPED"
+
+
 class ErrorCode(str, Enum):
     VRAM_LOCK_TIMEOUT = "VRAM_LOCK_TIMEOUT"
     VRAM_INSUFFICIENT = "VRAM_INSUFFICIENT"
