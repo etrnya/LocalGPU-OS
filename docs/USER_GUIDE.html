@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LocalGPU-OS 使用教學與架構指南 (M1 v1.0.0)</title>
+  <style>
+    :root {
+      --bg: #070b14;
+      --bg-elev: #0e1628;
+      --bg-card: #121c33;
+      --bg-code: #0a1020;
+      --border: rgba(148, 163, 184, 0.16);
+      --border-strong: rgba(56, 189, 248, 0.35);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --heading: #f8fafc;
+      --cyan: #38bdf8;
+      --emerald: #34d399;
+      --indigo: #818cf8;
+      --amber: #fbbf24;
+      --rose: #fb7185;
+      --radius: 14px;
+      --font-sans: "Segoe UI", "Microsoft JhengHei", system-ui, -apple-system, sans-serif;
+      --font-mono: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--font-sans);
+      background: radial-gradient(circle at 15% 0%, #111d38 0%, var(--bg) 52%);
+      color: var(--text);
+      line-height: 1.7;
+    }
+
+    /* Layout */
+    .layout {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 28px 20px;
+      background: rgba(7, 11, 20, 0.88);
+      border-right: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      overflow-y: auto;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .brand-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--cyan), var(--emerald));
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.7);
+    }
+    .brand h1 {
+      font-size: 1.15rem;
+      margin: 0;
+      color: var(--heading);
+      letter-spacing: 0.02em;
+    }
+    .brand-sub {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin: 0 0 22px 0;
+    }
+
+    .nav-group {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin: 18px 0 8px 8px;
+    }
+    .nav-link {
+      display: block;
+      padding: 8px 12px;
+      border-radius: 8px;
+      color: #cbd5e1;
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: background 0.15s, color 0.15s;
+    }
+    .nav-link:hover, .nav-link.active {
+      background: rgba(56, 189, 248, 0.12);
+      color: var(--cyan);
+    }
+
+    .content {
+      max-width: 980px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 40px 44px 96px;
+    }
+
+    /* Hero */
+    .hero {
+      padding: 34px 36px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(18, 28, 51, 0.95), rgba(10, 18, 36, 0.95));
+      border: 1px solid var(--border-strong);
+      box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.8);
+      margin-bottom: 36px;
+    }
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.76rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.7);
+      color: var(--cyan);
+    }
+    .pill.emerald { color: var(--emerald); border-color: rgba(52, 211, 153, 0.3); }
+    .pill.indigo { color: var(--indigo); border-color: rgba(129, 140, 248, 0.3); }
+    .hero h2 {
+      margin: 0 0 12px;
+      font-size: 2rem;
+      line-height: 1.25;
+      color: var(--heading);
+    }
+    .hero p {
+      margin: 0 0 24px;
+      color: #cbd5e1;
+      font-size: 1.02rem;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .metric {
+      background: rgba(7, 11, 20, 0.65);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .metric-val {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--heading);
+      font-family: var(--font-mono);
+    }
+    .metric-val.cyan { color: var(--cyan); }
+    .metric-val.emerald { color: var(--emerald); }
+    .metric-label {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* Sections */
+    section {
+      margin-bottom: 48px;
+      scroll-margin-top: 24px;
+    }
+    h2.sec-title {
+      font-size: 1.45rem;
+      color: var(--heading);
+      margin: 0 0 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    h3 {
+      font-size: 1.08rem;
+      color: #f1f5f9;
+      margin: 22px 0 10px;
+    }
+    p { margin: 0 0 14px; }
+
+    /* Cards & Grids */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .card h4 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+      color: var(--heading);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card p {
+      margin: 0;
+      font-size: 0.92rem;
+      color: #cbd5e1;
+    }
+
+    /* Architecture Diagram */
+    .arch-box {
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .arch-layer {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 18px;
+      background: rgba(15, 23, 42, 0.75);
+    }
+    .arch-layer.core { border-color: rgba(56, 189, 248, 0.4); }
+    .arch-layer.worker { border-color: rgba(52, 211, 153, 0.4); }
+    .arch-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--cyan);
+      margin-bottom: 8px;
+    }
+    .arch-layer.worker .arch-title { color: var(--emerald); }
+    .arch-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chip {
+      font-size: 0.84rem;
+      padding: 5px 11px;
+      border-radius: 8px;
+      background: rgba(30, 41, 59, 0.85);
+      border: 1px solid var(--border);
+      color: #e2e8f0;
+    }
+    .arch-arrow {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    /* Steps */
+    .step {
+      position: relative;
+      padding: 20px 22px 20px 58px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+    }
+    .step-num {
+      position: absolute;
+      left: 18px;
+      top: 20px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--cyan), var(--indigo));
+      color: #030712;
+      font-weight: 800;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .step h4 {
+      margin: 0 0 8px;
+      color: var(--heading);
+      font-size: 1.02rem;
+    }
+
+    /* Code blocks with copy */
+    .code-wrap {
+      position: relative;
+      margin: 12px 0;
+      border-radius: 10px;
+      background: var(--bg-code);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .code-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 12px;
+      background: rgba(30, 41, 59, 0.55);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.76rem;
+      color: var(--muted);
+      font-family: var(--font-mono);
+    }
+    .copy-btn {
+      background: rgba(56, 189, 248, 0.14);
+      color: var(--cyan);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 6px;
+      padding: 3px 10px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      transition: background 0.15s;
+    }
+    .copy-btn:hover { background: rgba(56, 189, 248, 0.25); }
+    pre {
+      margin: 0;
+      padding: 14px 16px;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      line-height: 1.55;
+      color: #e2e8f0;
+    }
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.88em;
+      background: rgba(30, 41, 59, 0.75);
+      padding: 2px 6px;
+      border-radius: 5px;
+      color: #7dd3fc;
+    }
+    pre code {
+      background: transparent;
+      padding: 0;
+      color: inherit;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      background: var(--bg-card);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 14px;
+      font-size: 0.86rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background: rgba(56, 189, 248, 0.16);
+      color: var(--cyan);
+      border-color: var(--border-strong);
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Callouts */
+    .callout {
+      padding: 14px 18px;
+      border-radius: 10px;
+      border-left: 4px solid var(--cyan);
+      background: rgba(56, 189, 248, 0.08);
+      margin: 14px 0;
+      font-size: 0.92rem;
+    }
+    .callout.warn {
+      border-left-color: var(--amber);
+      background: rgba(251, 191, 36, 0.08);
+    }
+    .callout.good {
+      border-left-color: var(--emerald);
+      background: rgba(52, 211, 153, 0.08);
+    }
+
+    /* Troubleshooting search table */
+    .search-input {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg-code);
+      color: var(--text);
+      font-size: 0.92rem;
+      margin-bottom: 14px;
+      outline: none;
+    }
+    .search-input:focus { border-color: var(--cyan); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      font-size: 0.88rem;
+    }
+    th, td {
+      padding: 11px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      background: rgba(15, 23, 42, 0.9);
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    tr:last-child td { border-bottom: none; }
+
+    .badge-err {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      padding: 2px 7px;
+      border-radius: 6px;
+      background: rgba(251, 113, 133, 0.14);
+      color: var(--rose);
+      border: 1px solid rgba(251, 113, 133, 0.3);
+      white-space: nowrap;
+    }
+
+    footer {
+      margin-top: 56px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      font-size: 0.84rem;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+      .content { padding: 24px 18px 64px; }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <h1>LocalGPU-OS</h1>
+      </div>
+      <p class="brand-sub">M1 正式版使用教學 · v1.0.0</p>
+
+      <div class="nav-group">導覽目錄</div>
+      <a class="nav-link active" href="#overview">專案定位與核心優勢</a>
+      <a class="nav-link" href="#architecture">系統分層架構</a>
+      <a class="nav-link" href="#quickstart">五分鐘快速上手</a>
+      <a class="nav-link" href="#outputs">輸出檔案契約</a>
+      <a class="nav-link" href="#sdk">Python SDK 整合</a>
+      <a class="nav-link" href="#troubleshoot">常見錯誤碼與排錯</a>
+      <a class="nav-link" href="#benchmarks">RTX 4060 實測與限制</a>
+    </aside>
+
+    <main class="content">
+      <!-- HERO -->
+      <div class="hero" id="overview">
+        <div class="pill-row">
+          <span class="pill emerald">M1 封存基線：m1-d-ocr-pdf-v1.0.0</span>
+          <span class="pill">Apache 2.0</span>
+          <span class="pill indigo">RUNTIME_OFFLINE 預設離線</span>
+        </div>
+        <h2>讓個人筆電與工作站顯卡，安全、可靠地共享本機 AI 算力</h2>
+        <p>
+          <strong>LocalGPU-OS</strong> 是一個與 AI 模型及應用程式無關的<strong>本機運算資源仲裁層</strong>。
+          它把硬體探測、顯存排程、溫控節流與隔離 Worker 執行拆分成乾淨的四層架構，
+          讓你用 8GB 筆電獨顯（如 RTX 4060 Laptop）也能安心跑離線 PDF／OCR 與未來的 AI 工作負載，
+          <strong>零雲端 API 費、無訂閱綁定、不因資源撞車而當機</strong>。
+        </p>
+        <div class="metrics">
+          <div class="metric">
+            <div class="metric-val emerald">56 / 56</div>
+            <div class="metric-label">全倉自動化測試通過</div>
+          </div>
+          <div class="metric">
+            <div class="metric-val cyan">0</div>
+            <div class="metric-label">Core OS 重型 AI 依賴</div>
+          </div>
+          <div class="metric">
+            <div class="metric-val">1,468 MiB</div>
+            <div class="metric-label">RTX 4060 OCR 實測峰值 VRAM</div>
+          </div>
+          <div class="metric">
+            <div class="metric-val">578 ms</div>
+            <div class="metric-label">A4 200 DPI 單頁 CUDA 耗時</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADVANTAGES -->
+      <section>
+        <h2 class="sec-title">✨ 五大核心優勢</h2>
+        <div class="grid-2">
+          <div class="card">
+            <h4>🔒 三層 VRAM-Gate，拒絕顯存超賣</h4>
+            <p>
+              採用 <code>VRAM_admission = max(0, VRAM_free,observed - VRAM_safety - VRAM_pending)</code>
+              即時觀測裝置可用顯存，同時感知外部程序（如遊戲、Ollama）與受控 Worker，避免重複扣除，也不讓兩個 GPU 任務互相踩死。
+            </p>
+          </div>
+          <div class="card">
+            <h4>✅ 真實 Backend 驗證，絕不假裝跑 GPU</h4>
+            <p>
+              不只看參數寫了 <code>cuda</code>，而是實際檢查 ONNX Runtime <code>det / cls / rec</code> Session 的
+              <code>get_providers()</code>，確保真的啟用 <code>CUDAExecutionProvider</code>，否則誠實回報降級或 Fail-Closed 拒絕。
+            </p>
+          </div>
+          <div class="card">
+            <h4>🧩 零依賴 Core OS ＋ 隔離 Worker .venv</h4>
+            <p>
+              Core OS 只使用 Python 標準函式庫，嚴禁安裝 PyTorch / TensorFlow；每個 Worker 擁有獨立
+              <code>workers/&lt;id&gt;/.venv</code>，啟動時直接解析精準路徑，完全不依賴系統 <code>PATH</code>，全倉 <code>0</code> 處 <code>shell=True</code>。
+            </p>
+          </div>
+          <div class="card">
+            <h4>🌡️ 溫控四態守衛 ＋ 安全 CPU 降級</h4>
+            <p>
+              內建 <code>NORMAL / COOLING / CRITICAL / SENSOR_DEGRADED</code> 狀態機。當顯存不足或溫度偏高時，
+              開啟 <code>--allow-cpu-fallback</code> 會自動改申請純 <code>CPU_COMPUTE + SYSTEM_MEMORY</code> 租約（不佔 GPU Lease）完成任務。
+            </p>
+          </div>
+          <div class="card">
+            <h4>🛡️ 載入前 SHA-256 校驗 ＋ 原子化輸出</h4>
+            <p>
+              離線執行期（<code>RUNTIME_OFFLINE</code>）零聯網下載，載入模型前強制核對 64 位 SHA-256；
+              輸出先寫入 <code>.staging</code> 驗證完整後再 <code>os.replace</code>，取消、OOM 或強殺絕不留下半成品，也不破壞舊結果。
+            </p>
+          </div>
+          <div class="card">
+            <h4>♻️ 7 步驟取消協議 ＋ 孤兒程序防誤回收</h4>
+            <p>
+              支援跨平台原子取消檔與寬限期優雅退出；逾時強制終止後必重採樣 VRAM 確認硬體狀態。
+              即使 Core OS 意外崩潰重啟，也會交叉比對 PID 與建立時間，絕不誤回收仍在運作的 Worker 租約。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ARCHITECTURE -->
+      <section id="architecture">
+        <h2 class="sec-title">🏗️ 系統分層架構</h2>
+        <div class="arch-box">
+          <div class="arch-layer">
+            <div class="arch-title">呼叫端 (Caller)</div>
+            <div class="arch-chips">
+              <span class="chip">CLI: <code>lgpu doctor / status / run</code></span>
+              <span class="chip">Python SDK: <code>LocalGpuClient</code></span>
+              <span class="chip">下游應用（RAG / COA 解析 / 自動化腳本）</span>
+            </div>
+          </div>
+          <div class="arch-arrow">▼ 統一資源申請與安全邊界檢查 ▼</div>
+          <div class="arch-layer core">
+            <div class="arch-title">LocalGPU-OS Core（純 Python 標準庫，零重型依賴）</div>
+            <div class="arch-chips">
+              <span class="chip">M1-A: HardwareProfile &amp; HardwareSnapshot</span>
+              <span class="chip">M1-B: VramGate + RegistryLock + ThermalGuard</span>
+              <span class="chip">M1-C: WorkerRuntime + 7-Step Cancel + Path Traversal 防護</span>
+            </div>
+          </div>
+          <div class="arch-arrow">▼ 隔離 .venv 子程序啟動（shell=False）▼</div>
+          <div class="arch-layer worker">
+            <div class="arch-title">M1-D 隔離 Worker：workers/ocr_pdf/.venv</div>
+            <div class="arch-chips">
+              <span class="chip">Document Classifier</span>
+              <span class="chip">原生文字 PDF → PyMuPDF（跳過 OCR）</span>
+              <span class="chip">掃描 PDF / 圖片 → RapidOCR (CUDA / CPU)</span>
+              <span class="chip">原子輸出：document.md / document.json / metadata.json</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- QUICKSTART -->
+      <section id="quickstart">
+        <h2 class="sec-title">🚀 五分鐘快速上手（Windows 11 PowerShell）</h2>
+        <div class="callout good">
+          <strong>環境需求：</strong>Python 3.10+（Core OS）；若要安裝 <code>ocr_pdf</code> 隔離 Worker，建議使用 <strong>Python 3.12</strong>（Windows 11 + NVIDIA RTX 4060 Laptop 已實機完整驗證）。
+        </div>
+
+        <div class="step">
+          <span class="step-num">1</span>
+          <h4>取得專案並執行硬體健檢（M1-A）</h4>
+          <p>不需要安裝任何第三方套件，立刻確認本機 GPU 型號、可用顯存、溫度與動態策略分級。</p>
+          <div class="code-wrap">
+            <div class="code-head">
+              <span>PowerShell</span>
+              <button class="copy-btn" onclick="copyCode(this)">📋 複製</button>
+            </div>
+            <pre><code>git clone https://github.com/etrnya/LocalGPU-OS.git
+cd LocalGPU-OS
+
+$env:PYTHONPATH="src"
+python -m localgpu_os.presentation.cli doctor
+python -m localgpu_os.presentation.cli doctor --json</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <span class="step-num">2</span>
+          <h4>查看即時 VRAM-Gate 仲裁與租約狀態（M1-B）</h4>
+          <p>確認目前 <code>VRAM_admission</code>（可入場顯存）、<code>VRAM_pending</code> 與活躍租約數量。</p>
+          <div class="code-wrap">
+            <div class="code-head">
+              <span>PowerShell</span>
+              <button class="copy-btn" onclick="copyCode(this)">📋 複製</button>
+            </div>
+            <pre><code>$env:PYTHONPATH="src"
+python -m localgpu_os.presentation.cli status</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <span class="step-num">3</span>
+          <h4>建立隔離的 <code>ocr_pdf</code> Worker 環境（僅需安裝一次）</h4>
+          <p>所有 PDF、RapidOCR 與 CUDA 13 / cuDNN 9 Runtime wheel 皆完全隔離在 <code>workers\ocr_pdf\.venv</code>，不污染系統與 Core OS。</p>
+          <div class="code-wrap">
+            <div class="code-head">
+              <span>PowerShell (INSTALL_PHASE)</span>
+              <button class="copy-btn" onclick="copyCode(this)">📋 複製</button>
+            </div>
+            <pre><code># 1. 建立 Worker 專屬虛擬環境
+py -3.12 -m venv workers\ocr_pdf\.venv
+
+# 2. 安裝鎖定版本套件（含 PyMuPDF、RapidOCR、ONNX Runtime GPU 與 NVIDIA CUDA/cuDNN wheel）
+workers\ocr_pdf\.venv\Scripts\python.exe -m pip install --only-binary=:all: -r workers\ocr_pdf\requirements.txt
+
+# 3. 連結 LocalGPU-OS SDK 路徑
+Set-Content -Path "workers\ocr_pdf\.venv\Lib\site-packages\localgpu_os.pth" `
+  -Value "$((Get-Location).Path)\src" -Encoding UTF8</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <span class="step-num">4</span>
+          <h4>準備輸入清單 <code>input_manifest.json</code></h4>
+          <p>
+            依安全契約，檔案清單<strong>禁止內嵌 Base64</strong>，且所有檔案路徑必須落在 <code>--allowed-root</code> 目錄內（自動攔截 <code>..</code> 與 Symlink 逃逸）。
+          </p>
+          <div class="code-wrap">
+            <div class="code-head">
+              <span>inputs/manifest.json</span>
+              <button class="copy-btn" onclick="copyCode(this)">📋 複製</button>
+            </div>
+            <pre><code>{
+  "files": [
+    { "path": "report_native.pdf", "role": "input" },
+    { "path": "scanned_coa.pdf", "role": "input" },
+    { "path": "label_photo.png", "role": "input" }
+  ]
+}</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <span class="step-num">5</span>
+          <h4>執行離線文件處理（<code>RUNTIME_OFFLINE</code>）</h4>
+          <p>
+            原生 PDF 會自動跳過 OCR 直接用 PyMuPDF 抽取；掃描 PDF 與圖片自動走 RTX CUDA OCR；若顯存不足可加上 <code>--allow-cpu-fallback</code> 安全降級至 CPU。
+          </p>
+          <div class="code-wrap">
+            <div class="code-head">
+              <span>PowerShell</span>
+              <button class="copy-btn" onclick="copyCode(this)">📋 複製</button>
+            </div>
+            <pre><code>$env:PYTHONPATH="src"
+python -m localgpu_os.presentation.cli run ocr_pdf `
+  --input-manifest .\inputs\manifest.json `
+  --allowed-root .\inputs `
+  --allow-cpu-fallback `
+  --json `
+  -- --output-dir .\output --job-id job_001</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- OUTPUT CONTRACT -->
+      <section id="outputs">
+        <h2 class="sec-title">📦 輸出檔案契約（原子化提交）</h2>
+        <p>
+          每份成功處理的文件都會先在 <code>.staging</code> 目錄完成寫入與 JSON 校驗，最後才原子置換成正式資料夾。
+          單檔輸入輸出於 <code>output/&lt;job_id&gt;/</code>；多檔批次則自動編號為 <code>job_001_001</code>、<code>job_001_002</code>…互不污染。
+        </p>
+
+        <div class="tabs">
+          <button class="tab-btn active" onclick="switchTab(event, 'tab-md')">document.md</button>
+          <button class="tab-btn" onclick="switchTab(event, 'tab-json')">document.json</button>
+          <button class="tab-btn" onclick="switchTab(event, 'tab-meta')">metadata.json</button>
+        </div>
+
+        <div id="tab-md" class="tab-panel active">
+          <div class="code-wrap">
+            <div class="code-head"><span>output/job_001/document.md（供人閱讀與 Markdown 筆記）</span></div>
+            <pre><code># scanned_coa.pdf
+
+## Page 1
+
+Certificate of Analysis - Batch 2026-001
+Purity: 99.8%
+
+## Page 2
+
+Verified by LocalGPU-OS M1-D</code></pre>
+          </div>
+        </div>
+
+        <div id="tab-json" class="tab-panel">
+          <div class="code-wrap">
+            <div class="code-head"><span>output/job_001/document.json（供 RAG / 下游程式結構化解析）</span></div>
+            <pre><code>{
+  "schema_version": "1.0",
+  "source_file": "scanned_coa.pdf",
+  "extraction_method": "rapidocr",
+  "ocr_invoked": true,
+  "actual_backend": "cuda",
+  "cuda_verified": true,
+  "page_count": 2,
+  "pages": [
+    {
+      "page_number": 1,
+      "width_px": 1653,
+      "height_px": 2339,
+      "processing_time_ms": 578.0,
+      "blocks": [
+        {
+          "text": "Certificate of Analysis - Batch 2026-001",
+          "confidence": 0.9912,
+          "bbox": [[92.0, 118.0], [740.0, 118.0], [740.0, 152.0], [92.0, 152.0]]
+        }
+      ]
+    }
+  ]
+}</code></pre>
+          </div>
+        </div>
+
+        <div id="tab-meta" class="tab-panel">
+          <div class="code-wrap">
+            <div class="code-head"><span>output/job_001/metadata.json（完整證據鏈：Backend、SHA-256、耗時）</span></div>
+            <pre><code>{
+  "schema_version": "1.0",
+  "job_id": "job_001",
+  "worker_id": "ocr_pdf",
+  "worker_version": "1.0.0",
+  "extraction_method": "rapidocr",
+  "ocr_invoked": true,
+  "requested_backend": "cuda",
+  "compute_backend": "cuda",
+  "cuda_verified": true,
+  "network_policy": "RUNTIME_OFFLINE",
+  "ocr_backend_audit": {
+    "checksums_verified": true,
+    "model_precision": "fp32_onnx_cuda",
+    "active_providers": {
+      "det": ["CUDAExecutionProvider", "CPUExecutionProvider"],
+      "cls": ["CUDAExecutionProvider", "CPUExecutionProvider"],
+      "rec": ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    },
+    "model_manifest": [
+      { "filename": "ch_PP-OCRv4_det_infer.onnx", "sha256": "d2a7720d..." },
+      { "filename": "ch_PP-OCRv4_rec_infer.onnx", "sha256": "48fc40f2..." },
+      { "filename": "ch_ppocr_mobile_v2.0_cls_infer.onnx", "sha256": "e47acedf..." }
+    ]
+  }
+}</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- PYTHON SDK -->
+      <section id="sdk">
+        <h2 class="sec-title">🐍 Python SDK 整合範例</h2>
+        <p>你可以直接在自己的 Python 腳本（如知識庫匯入、報表批次解析）中透過 <code>LocalGpuClient</code> 呼叫，並支援透過 <code>threading.Event</code> 隨時優雅取消任務。</p>
+        <div class="code-wrap">
+          <div class="code-head">
+            <span>Python</span>
+            <button class="copy-btn" onclick="copyCode(this)">📋 複製</button>
+          </div>
+          <pre><code>from pathlib import Path
+import threading
+from localgpu_os import LocalGpuClient
+
+client = LocalGpuClient(workers_dir=Path("workers"))
+
+# 1. 先檢查硬體狀態
+report = client.doctor()
+print("GPU:", report.profile.device_name, "| Admission VRAM:", report.decision.vram_admission_mib, "MiB")
+
+# 2. 執行離線 OCR / PDF Worker（支援取消事件與自動 CPU 降級）
+cancel_event = threading.Event()
+result = client.run_worker(
+    worker_id="ocr_pdf",
+    input_manifest={"files": [{"path": "sample.pdf"}]},
+    allowed_root=Path("./inputs"),
+    extra_args=["--output-dir", "./output", "--job-id", "sdk_job_001"],
+    allow_cpu_fallback=True,
+    cancel_event=cancel_event,
+)
+
+if result.succeeded:
+    print("完成！輸出結果：", result.output_data["jobs"][0]["outputs"])
+else:
+    print("狀態：", result.status, "| 錯誤碼：", [e.value for e in result.error_codes])</code></pre>
+        </div>
+      </section>
+
+      <!-- TROUBLESHOOTING -->
+      <section id="troubleshoot">
+        <h2 class="sec-title">🛠️ 常見錯誤碼與排錯速查</h2>
+        <input
+          type="text"
+          id="errSearch"
+          class="search-input"
+          placeholder="輸入關鍵字篩選（例如：VRAM、溫度、venv、Base64、OOM、取消）..."
+          oninput="filterErrors()"
+        />
+        <table id="errTable">
+          <thead>
+            <tr>
+              <th>錯誤碼 / 狀態</th>
+              <th>觸發原因</th>
+              <th>建議處理方式</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="badge-err">VRAM_INSUFFICIENT</span></td>
+              <td>即時 <code>VRAM_admission</code> 低於任務需求（如 <code>ocr_pdf</code> 需 2048 MiB + 安全餘裕 1536 MiB）。</td>
+              <td>關閉佔用顯存的外部程式，或加上 <code>--allow-cpu-fallback</code> 改用純 CPU 安全完成。</td>
+            </tr>
+            <tr>
+              <td><span class="badge-err">WORKER_ENV_NOT_INSTALLED</span></td>
+              <td>找不到 <code>workers/&lt;id&gt;/.venv/Scripts/python.exe</code>（絕不偷用系統 PATH）。</td>
+              <td>依照「Step 3」建立該 Worker 的隔離 <code>.venv</code> 並安裝 <code>requirements.txt</code>。</td>
+            </tr>
+            <tr>
+              <td><span class="badge-err">WORKER_MANIFEST_INVALID</span></td>
+              <td>Manifest 格式錯誤、內嵌 Base64、檔案超過大小上限、或路徑企圖逃逸 <code>--allowed-root</code>（含 Symlink）。</td>
+              <td>確認輸入檔案皆位於 <code>--allowed-root</code> 內且使用檔案路徑參考而非 Base64。</td>
+            </tr>
+            <tr>
+              <td><span class="badge-err">THERMAL_COOLING_WAIT</span></td>
+              <td>GPU 溫度超過警戒值（預設 82°C），進入 <code>COOLING</code> 節流狀態。</td>
+              <td>等待顯卡降溫至恢復門檻（72°C）以下，或使用 <code>--allow-cpu-fallback</code> 改跑 CPU。</td>
+            </tr>
+            <tr>
+              <td><span class="badge-err">THERMAL_CRITICAL_ABORT</span></td>
+              <td>GPU 溫度超過緊急門檻（預設 88°C），強制停止核發 GPU 任務。</td>
+              <td>檢查散熱與風扇設定，待降溫並穩定超過冷卻遲滯時間（60s）後再執行。</td>
+            </tr>
+            <tr>
+              <td><span class="badge-err">THERMAL_SENSOR_DEGRADED</span></td>
+              <td>無法讀取溫度感測器或硬體快照過期，系統進入保守 Fail-Closed 模式。</td>
+              <td>執行 <code>lgpu doctor</code> 確認驅動與 <code>nvidia-smi</code> 狀態；純 CPU 任務仍可執行。</td>
+            </tr>
+            <tr>
+              <td><span class="badge-err">DISK_SPACE_INSUFFICIENT</span></td>
+              <td>工作目錄或暫存區剩餘磁碟空間低於 Worker 最低需求（預設 256 MiB）。</td>
+              <td>清理磁碟空間，或使用 <code>--work-dir</code> 指定空間充足的磁碟區。</td>
+            </tr>
+            <tr>
+              <td><span class="badge-err">LEASE_RECLAIM_BLOCKED</span></td>
+              <td>舊任務心跳逾時但 OS 交叉驗證程序仍存活（或無法確認已停止），禁止誤回收。</td>
+              <td>執行 <code>lgpu status</code> 檢視活躍 Lease 與 PID，確認舊程序結束後將自動回收。</td>
+            </tr>
+            <tr>
+              <td><span class="badge-err">error_kind: "OOM"</span></td>
+              <td>取得 GPU Lease 後，在實際推論過程中發生顯存不足（如超高 DPI 超大圖）。</td>
+              <td>Lease 會自動回收且不留半成品；調低 <code>--dpi</code>（如 150）或改用 <code>--allow-cpu-fallback</code> 重試。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- BENCHMARKS & LIMITS -->
+      <section id="benchmarks">
+        <h2 class="sec-title">📊 RTX 4060 Laptop 實測基準與已知限制</h2>
+        <div class="grid-3">
+          <div class="card">
+            <h4>🖥️ 實機測試平台</h4>
+            <p>Windows 11 + NVIDIA GeForce RTX 4060 Laptop GPU (8188 MiB, Driver 621.14) + Python 3.12 隔離環境。</p>
+          </div>
+          <div class="card">
+            <h4>📈 實測顯存階梯</h4>
+            <p>模型載入 <strong>+134 MiB</strong> → 首次推論 <strong>+956 MiB</strong> → 穩態峰值 <strong>+1,468 MiB</strong>；Manifest 保守申請 <strong>2,048 MiB</strong>。</p>
+          </div>
+          <div class="card">
+            <h4>🧪 測試驗證範圍</h4>
+            <p>全倉 <strong>56 / 56</strong> 測試通過，含全倉 AST 掃描 0 處 <code>shell=True</code>、連續多輪 CUDA VRAM 歸還與故障注入驗證。</p>
+          </div>
+        </div>
+
+        <div class="callout warn" style="margin-top: 18px;">
+          <strong>目前已知邊界與限制（M1 v1.0.0）：</strong>
+          <ul style="margin: 8px 0 0 18px; padding: 0;">
+            <li><strong>單卡範圍：</strong>M1 限定管理單一指定 NVIDIA CUDA GPU（透過 <code>--device 0</code> 指定）。</li>
+            <li><strong>模型精度透明揭露：</strong>RapidOCR 內建 PP-OCRv4 為 FP32 ONNX 模型，<code>metadata.json</code> 誠實標註為 <code>fp32_onnx_cuda</code> / <code>fp32_onnx_cpu</code>。</li>
+            <li><strong>Windows 程序樹範圍：</strong><code>ocr_pdf</code> 目前為單程序執行，不衍生孫程序；未來若有會衍生多層子程序的 Worker，將於 M2/M3 評估導入 Windows Job Object。</li>
+          </ul>
+        </div>
+      </section>
+
+      <footer>
+        <div>LocalGPU-OS · M1 Complete (<code>m1-d-ocr-pdf-v1.0.0</code>)</div>
+        <div>Apache License 2.0 · Copyright © 2026 etrnya</div>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    function copyCode(btn) {
+      const pre = btn.closest(".code-wrap").querySelector("pre");
+      const text = pre.innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = "✅ 已複製";
+        setTimeout(() => { btn.textContent = orig; }, 1600);
+      });
+    }
+
+    function switchTab(ev, panelId) {
+      const container = ev.target.closest("section");
+      container.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      container.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+      ev.target.classList.add("active");
+      document.getElementById(panelId).classList.add("active");
+    }
+
+    function filterErrors() {
+      const q = document.getElementById("errSearch").value.trim().toLowerCase();
+      document.querySelectorAll("#errTable tbody tr").forEach(row => {
+        row.style.display = row.innerText.toLowerCase().includes(q) ? "" : "none";
+      });
+    }
+
+    // Highlight active sidebar link on scroll
+    const links = document.querySelectorAll(".nav-link");
+    const sections = Array.from(links).map(l => document.querySelector(l.getAttribute("href")));
+    window.addEventListener("scroll", () => {
+      let current = 0;
+      sections.forEach((sec, idx) => {
+        if (sec && sec.getBoundingClientRect().top <= 120) current = idx;
+      });
+      links.forEach((l, idx) => l.classList.toggle("active", idx === current));
+    });
+  </script>
+</body>
+</html>
